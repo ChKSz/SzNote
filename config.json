@@ -1,0 +1,6 @@
+{
+  "port": 8888,
+  "maxNoteSize": 100000,
+  "cacheTTL": 600,
+  "cacheCheckPeriod": 120
+} 

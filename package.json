@@ -1,0 +1,14 @@
+{
+  "name": "SzNote",
+  "version": "1.5.0",
+  "description": "简易在线笔记，记你所想。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "express": "^4.18.2",
+    "node-cache": "^5.1.2"
+  }
+}

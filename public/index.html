@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SzNote - 极简笔记</title>
+    <!-- 引入 Google Fonts - Inter 字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- 引入 Font Awesome 图标库以便使用齿轮图标 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta2/css/all.min.css">
+    <!-- 引入 Marked.js 用于 Markdown 解析 -->
+    <script src="https://cdn.chksz.top/marked.min.js"></script>
+    <!-- 引入 Prism.js 用于代码语法高亮 -->
+    <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-core.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+    <!-- 引入外部CSS文件 -->
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" id="dynamic-favicon" type="image/png" href="/NotesIcon.png">
+    <script>
+      function updateFavicon() {
+        const favicon = document.getElementById('dynamic-favicon');
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          favicon.href = '/NotesIconWhite.png';
+        } else {
+          favicon.href = '/NotesIcon.png';
+        }
+      }
+      updateFavicon();
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', updateFavicon);
+    </script>
+</head>
+<body>
+    <div class="container" data-note-locked="false">
+        <header>
+            <h1>SzNote</h1>
+            <div class="note-nav">
+                <input type="text" id="customIdInput" placeholder="输入笔记ID访问或创建">
+                <button id="goIdButton">GO</button>
+                <button class="settings-button" id="openSettingsModalButton" title="笔记设置"><i class="fas fa-cog"></i></button>
+            </div>
+        </header>
+
+        <!-- 编辑器工具栏 -->
+        <div class="editor-toolbar" id="editorToolbar" style="display: none;">
+            <button data-action="bold" title="粗体 (Ctrl+B)">
+                <i class="fas fa-bold"></i>
+            </button>
+            <button data-action="italic" title="斜体 (Ctrl+I)">
+                <i class="fas fa-italic"></i>
+            </button>
+            <button data-action="link" title="链接 (Ctrl+K)">
+                <i class="fas fa-link"></i>
+            </button>
+            <button data-action="image" title="插入图片">
+                <i class="fas fa-image"></i>
+            </button>
+            <button data-action="code" title="代码块">
+                <i class="fas fa-code"></i>
+            </button>
+            <button data-action="list" title="列表">
+                <i class="fas fa-list"></i>
+            </button>
+            <button data-action="quote" title="引用">
+                <i class="fas fa-quote-left"></i>
+            </button>
+            <button data-action="heading" title="标题">
+                <i class="fas fa-heading"></i>
+            </button>
+        </div>
+
+        <!-- 笔记内容区 -->
+        <div class="split-view">
+            <textarea id="editor" placeholder="开始输入你的笔记内容..."></textarea>
+            <div id="markdownPreview"></div>
+            <!-- 当笔记被锁定时显示的占位符 -->
+            <div class="locked-content" style="display: none;">
+                <span>此笔记受密码保护。</span>
+            </div>
+        </div>
+        
+        <div class="info">
+            <p>轻松记录，专注于你的想法。</p>
+            <p>当前笔记ID: <a id="noteIdLink" href="#"></a></p>
+        </div>
+    </div>
+
+
+    <!-- 欢迎引导遮罩层 -->
+    <div class="welcome-overlay" id="welcomeOverlay" style="display: none;">
+        <div class="welcome-step" id="welcomeStep">
+            <div class="welcome-content">
+                <h3 id="welcomeTitle">欢迎使用 SzNote</h3>
+                <p id="welcomeDescription">让我们快速了解一下主要功能</p>
+                <div class="welcome-actions">
+                    <button id="welcomeNext" class="welcome-btn">下一步</button>
+                    <button id="welcomeSkip" class="welcome-btn secondary">跳过</button>
+                </div>
+                <div class="welcome-progress">
+                    <span class="progress-dot active"></span>
+                    <span class="progress-dot"></span>
+                    <span class="progress-dot"></span>
+                    <span class="progress-dot"></span>
+                    <span class="progress-dot"></span>
+                    <span class="progress-dot"></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 密码验证弹窗 -->
+    <div class="modal-overlay" id="passwordModal" style="display: none;">
+        <div class="modal-content password-modal">
+            <h2>此笔记受密码保护</h2>
+            <input type="password" id="modalPasswordInput" placeholder="请输入密码">
+            <button id="unlockNoteButton">解锁</button>
+            <div id="modalErrorMessage" class="modal-message error"></div>
+        </div>
+    </div>
+
+    <!-- 笔记设置模态框 -->
+    <div class="modal-overlay" id="settingsModal" style="display: none;">
+        <div class="modal-content settings-content">
+            <div class="modal-header">
+                <h2>笔记设置</h2>
+                <button class="close-button" id="closeSettingsModalButton"><i class="fas fa-times"></i></button>
+            </div>
+
+            <div class="settings-columns">
+                <!-- 左栏：笔记管理 -->
+                <div class="settings-column">
+                    <div class="column-title">
+                        <i class="fas fa-file-alt"></i>
+                        笔记管理
+                    </div>
+
+                    <!-- 更改笔记ID -->
+                    <div class="modal-section">
+                        <h3>更改笔记ID</h3>
+                        <p>当前笔记ID: <strong><span id="currentNoteIdInSettings"></span></strong></p>
+                        <div class="input-group">
+                            <input type="text" id="changeNoteIdInput" placeholder="输入新的笔记ID">
+                            <button id="applyChangeNoteIdButton">应用新ID</button>
+                        </div>
+                        <div id="changeIdMessage" class="modal-message"></div>
+                    </div>
+
+                    <!-- 显示模式设置 -->
+                    <div class="modal-section">
+                        <h3>显示模式</h3>
+                        <div class="display-mode-toggle">
+                            <div class="toggle-labels">
+                                <span class="toggle-label active" data-mode="both">
+                                    <i class="fas fa-columns"></i>
+                                    编辑器 + 预览
+                                </span>
+                                <span class="toggle-label" data-mode="preview">
+                                    <i class="fas fa-eye"></i>
+                                    仅预览
+                                </span>
+                            </div>
+                            <div class="toggle-switch" id="displayModeToggle">
+                                <div class="toggle-slider"></div>
+                            </div>
+                            <div style="font-size:0.85em;color:#64748b;margin-top:12px;">
+                                显示模式设置会保存到笔记中，下次打开时自动应用
+                            </div>
+                        </div>
+                        <!-- 隐藏的radio按钮用于兼容现有逻辑 -->
+                        <input type="radio" name="displayMode" value="both" id="displayModeBoth" checked style="display: none;">
+                        <input type="radio" name="displayMode" value="preview" id="displayModePreview" style="display: none;">
+                    </div>
+
+                    <!-- 存放时间设置 -->
+                    <div class="modal-section">
+                        <h3>存放时间</h3>
+                        <p>当前设置: <strong><span id="currentExpireDays">3</span>天</strong></p>
+                        <div class="expire-options">
+                            <button class="expire-btn" data-days="3">3天</button>
+                            <button class="expire-btn" data-days="7">7天</button>
+                            <button class="expire-btn" data-days="30">30天</button>
+                            <button class="expire-btn" data-days="365">365天</button>
+                        </div>
+                        <div style="font-size:0.85em;color:#64748b;margin-top:12px;">
+                            笔记将在最后访问后的指定天数后自动删除
+                        </div>
+                        <div id="expireMessage" class="modal-message"></div>
+                    </div>
+                </div>
+
+                <!-- 右栏：安全设置 -->
+                <div class="settings-column">
+                    <div class="column-title">
+                        <i class="fas fa-shield-alt"></i>
+                        安全设置
+                    </div>
+
+                    <!-- 密码设置/修改 -->
+                    <div class="modal-section">
+                        <h3>设置/修改密码</h3>
+                        <div class="input-group">
+                            <input type="password" id="newPasswordInput" placeholder="新密码 (至少4位)">
+                            <input type="password" id="currentPasswordForSetInput" placeholder="当前密码 (如有)">
+                            <button id="setPasswordButton">设置/修改</button>
+                        </div>
+                        <div id="setPasswordMessage" class="modal-message"></div>
+                    </div>
+
+                    <!-- 密码移除 -->
+                    <div class="modal-section">
+                        <h3>移除密码</h3>
+                        <div class="input-group">
+                            <input type="password" id="removePasswordInput" placeholder="当前密码 (用于移除)">
+                            <button id="removePasswordButton">移除密码</button>
+                        </div>
+                        <div id="removePasswordMessage" class="modal-message"></div>
+                    </div>
+
+                    <!-- 项目信息 -->
+                    <div class="modal-section">
+                        <h3>关于项目</h3>
+                        <div class="project-info">
+                            <div class="project-links">
+                                <a href="https://github.com/ChKSz/SzNote" target="_blank" class="project-link">
+                                    <i class="fab fa-github"></i>
+                                    GitHub 项目
+                                </a>
+                                <a href="https://page.chksz.top" target="_blank" class="project-link">
+                                    <i class="fas fa-user"></i>
+                                    作者主页
+                                </a>
+                            </div>
+                            <div class="copyright-text">
+                                &copy; 2025 ChKSz. All rights reserved.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/js/script.js"></script>
+</body>
+</html>
