@@ -11,7 +11,7 @@
 ![License](https://img.shields.io/badge/License-MIT-yellow.svg)
 ![Version](https://img.shields.io/badge/Version-1.5.0-red.svg)
 
-[Demo](https://note.chksz.top)  ·  [Issues](https://github.com/ChKSz/SzNote/issues) 
+ 
 
 </div>
 
