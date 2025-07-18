@@ -98,19 +98,7 @@ const securityLogger = {
 
 // 安全日志函数
 function safeLog(message, data = null) {
-    const isProduction = process.env.NODE_ENV === 'production';
-    if (!isProduction) {
-        if (data) {
-            // 过滤敏感字段
-            const sanitizedData = { ...data };
-            delete sanitizedData.password;
-            delete sanitizedData.newPassword;
-            delete sanitizedData['x-note-password'];
-            console.log(message, sanitizedData);
-        } else {
-            console.log(message);
-        }
-    }
+    // 根据用户要求，不输出日志
 }
 
 // 创建频率限制器
@@ -163,12 +151,7 @@ app.use((req, res, next) => {
     
     // CSP策略
     res.setHeader('Content-Security-Policy', 
-        "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline' cdn.chksz.top cdn.jsdelivr.net cdnjs.cloudflare.com; " +
-        "style-src 'self' 'unsafe-inline' fonts.googleapis.com cdnjs.cloudflare.com; " +
-        "font-src 'self' fonts.gstatic.com; " +
-        "img-src 'self' data:; " +
-        "connect-src 'self';"
+        ""
     );
     
     // 生产环境强制HTTPS
@@ -179,12 +162,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// 添加请求日志中间件来诊断路由问题
-app.use((req, res, next) => {
-    const ip = req.ip || req.connection.remoteAddress || 'unknown';
-    safeLog(`[REQUEST] ${req.method} ${req.path} from ${ip}`);
-    next();
-});
+// 根据用户要求，移除请求日志中间件
 
 // 应用通用频率限制
 app.use('/api/', rateLimitMiddleware(generalLimiter, 'general'));
@@ -198,6 +176,7 @@ app.use('/public', (req, res, next) => {
 });
 
 // 注意：静态文件服务将在API路由之后定义，确保API路由优先匹配
+app.use(express.static('public'));
 
 /**
  * 安全清理和验证笔记ID
@@ -571,7 +550,6 @@ app.use(express.static('public'));
 
 // 所有其他GET请求都返回index.html
 app.get('*', (req, res) => {
-    console.log(`[CATCH-ALL] 通配符路由被触发: ${req.method} ${req.path}`);
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

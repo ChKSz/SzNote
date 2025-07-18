@@ -616,8 +616,11 @@ const editor = document.getElementById('editor');
             
             // 允许的标签和属性
             const allowedTags = ['p', 'br', 'strong', 'em', 'code', 'pre', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 
-                               'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'];
-            const allowedAttrs = ['href', 'class', 'data-language', 'src', 'alt', 'title'];
+                               'ul', 'ol', 'li', 'blockquote', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+                               'div', 'span', 'section', 'article', 'aside', 'header', 'footer', 'nav', 'main',
+                               'figure', 'figcaption', 'details', 'summary', 'mark', 'time', 'hr'];
+            const allowedAttrs = ['href', 'class', 'data-language', 'src', 'alt', 'title', 'id', 'style',
+                               'width', 'height', 'target', 'rel', 'data-*', 'aria-*', 'role', 'align'];
             
             // 递归清理所有元素
             function cleanElement(element) {
@@ -631,15 +634,32 @@ const editor = document.getElementById('editor');
                 // 清理属性
                 const attrs = Array.from(element.attributes);
                 attrs.forEach(attr => {
-                    if (!allowedAttrs.includes(attr.name.toLowerCase())) {
+                    const attrName = attr.name.toLowerCase();
+                    // 检查是否是允许的属性或匹配通配符模式（如data-*或aria-*）
+                    const isAllowed = allowedAttrs.some(allowed => {
+                        if (allowed.endsWith('*')) {
+                            const prefix = allowed.slice(0, -1); // 移除*
+                            return attrName.startsWith(prefix);
+                        }
+                        return attrName === allowed;
+                    });
+                    
+                    if (!isAllowed) {
                         element.removeAttribute(attr.name);
                     } else {
-                        // 清理属性值中的JavaScript
+                        // 清理属性值中的JavaScript，但允许data:image格式
                         const value = attr.value;
                         if (value.toLowerCase().includes('javascript:') || 
-                            value.toLowerCase().includes('data:') ||
+                            (value.toLowerCase().includes('data:') && !value.toLowerCase().includes('data:image/')) ||
                             value.toLowerCase().includes('vbscript:')) {
                             element.removeAttribute(attr.name);
+                        }
+                        
+                        // 对style属性进行额外的安全检查
+                        if (attrName === 'style') {
+                            // 移除可能有安全风险的CSS属性
+                            const sanitizedStyle = value.replace(/expression\s*\(|behavior\s*:|javascript:|eval\s*\(|url\s*\(/gi, '');
+                            element.setAttribute('style', sanitizedStyle);
                         }
                     }
                 });
@@ -656,7 +676,90 @@ const editor = document.getElementById('editor');
         function renderWithInternalRenderer(content) {
             // 移除显示模式标记，不在预览中显示
             const cleanContent = content.replace(/^<!--\s*DISPLAY_MODE:\s*\w*\s*-->\n?/m, '');
-            let html = marked.parse(cleanContent);
+            
+            // 保护HTML标签，防止被marked转义
+            const htmlBlocks = [];
+            const protectedContent = cleanContent.replace(/(<div[\s\S]*?<\/div>|<iframe[\s\S]*?<\/iframe>|<table[\s\S]*?<\/table>|<section[\s\S]*?<\/section>|<article[\s\S]*?<\/article>|<aside[\s\S]*?<\/aside>|<header[\s\S]*?<\/header>|<footer[\s\S]*?<\/footer>|<nav[\s\S]*?<\/nav>|<main[\s\S]*?<\/main>|<figure[\s\S]*?<\/figure>|<details[\s\S]*?<\/details>|<summary[\s\S]*?<\/summary>|<form[\s\S]*?<\/form>|<fieldset[\s\S]*?<\/fieldset>|<legend[\s\S]*?<\/legend>|<button[\s\S]*?<\/button>|<select[\s\S]*?<\/select>|<option[\s\S]*?<\/option>|<textarea[\s\S]*?<\/textarea>|<style[\s\S]*?<\/style>)/gi, function(match) {
+                htmlBlocks.push(match);
+                return `<!--HTML_BLOCK_${htmlBlocks.length - 1}-->`;
+            });
+            
+            // 保护单标签HTML元素
+            const singleTags = [];
+            const finalProtectedContent = protectedContent.replace(/(<(hr|br|img|input|meta|link|source|embed|track|wbr|area|base|col|command|keygen|param)[^>]*?>)/gi, function(match) {
+                singleTags.push(match);
+                return `<!--SINGLE_TAG_${singleTags.length - 1}-->`;
+            });
+            
+            // 解析Markdown
+            let html = marked.parse(finalProtectedContent);
+            
+            // 恢复HTML标签并处理内部的Markdown内容
+            html = html.replace(/<!--HTML_BLOCK_(\d+)-->/g, function(match, index) {
+                const htmlBlock = htmlBlocks[parseInt(index)];
+                return processHtmlBlockContent(htmlBlock);
+            });
+            
+            // 处理HTML块内的Markdown内容
+            function processHtmlBlockContent(htmlBlock) {
+                // 创建临时元素解析HTML
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlBlock;
+                
+                // 递归处理所有文本内容
+                function processNode(node) {
+                    // 如果是文本节点且不为空
+                    if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
+                        const text = node.textContent;
+                        // 检查是否包含Markdown标记
+                        if (/[\*\_\~\`\#\>\-\+\=\|\[\]\(\)]/.test(text)) {
+                            // 创建一个临时容器
+                            const tempContainer = document.createElement('div');
+                            // 渲染Markdown内容
+                            tempContainer.innerHTML = marked.parse(text);
+                            
+                            // 如果父节点是特定标签，不应用Markdown
+                            const parentTag = node.parentNode.tagName.toLowerCase();
+                            if (['script', 'style', 'code', 'pre'].includes(parentTag)) {
+                                return;
+                            }
+                            
+                            // 创建文档片段
+                            const fragment = document.createDocumentFragment();
+                            // 将渲染后的内容移动到片段中
+                            while (tempContainer.firstChild) {
+                                // 如果是p标签且是唯一的子元素，只取其内容
+                                if (tempContainer.childNodes.length === 1 && 
+                                    tempContainer.firstChild.nodeName.toLowerCase() === 'p') {
+                                    while (tempContainer.firstChild.firstChild) {
+                                        fragment.appendChild(tempContainer.firstChild.firstChild);
+                                    }
+                                } else {
+                                    fragment.appendChild(tempContainer.firstChild);
+                                }
+                            }
+                            
+                            // 替换原文本节点
+                            node.parentNode.replaceChild(fragment, node);
+                        }
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        // 如果是元素节点，递归处理其子节点
+                        // 创建一个副本，因为在处理过程中可能会修改子节点列表
+                        const childNodes = Array.from(node.childNodes);
+                        childNodes.forEach(processNode);
+                    }
+                }
+                
+                // 处理所有子节点
+                Array.from(tempDiv.childNodes).forEach(processNode);
+                
+                return tempDiv.innerHTML;
+            }
+            
+            // 恢复单标签HTML元素
+            html = html.replace(/<!--SINGLE_TAG_(\d+)-->/g, function(match, index) {
+                return singleTags[parseInt(index)];
+            });
 
             // 处理代码块，添加Prism.js类名和语法高亮
             html = html.replace(/<pre><code( class=\"language-([^\"]*)\")?>([^]*?)<\/code><\/pre>/g, function(match, classAttr, language, code) {
@@ -699,9 +802,17 @@ const editor = document.getElementById('editor');
         }
 
 
-        // 初始化 marked 选项，单回车换行
+        // 初始化 marked 选项，单回车换行，允许HTML标签
         if (window.marked) {
-            marked.setOptions({ breaks: true });
+            marked.setOptions({ 
+                breaks: true,
+                headerIds: false,
+                mangle: false,
+                sanitize: false,  // 不进行内部清理，使用我们自定义的sanitizeHTML
+                smartLists: true,
+                smartypants: true,
+                xhtml: false
+            });
         }
 
         // 语言别名映射
